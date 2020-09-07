@@ -1,8 +1,8 @@
-# (TODO: your game's title)
+# Dodge
 
-Author: (TODO: your name)
+Author: Michelle Chang
 
-Design: (TODO: In two sentences or fewer, describe what is new and interesting about your game.)
+Design: Modified the game of Pong into a game that is similar to dodgeball. The player will play against two AI paddles, and can score points by catching the ball successfully.
 
 Screen Shot:
 
@@ -10,6 +10,7 @@ Screen Shot:
 
 How To Play:
 
-(TODO: describe the controls and (if needed) goals/strategy.)
+Move the player with mouse motion.
+Catch the ball by pressing the space bar when: 1) the player comes close to the ball and 2) the ball bounces off walls on left or right sides of the court.
 
 This game was built with [NEST](NEST.md).
