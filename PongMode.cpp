@@ -117,7 +117,8 @@ PongMode::~PongMode() {
 	white_tex = 0;
 }
 
-bool PongMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
+bool PongMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size, bool &attempt_catch,
+        bool serve, bool &attempt_serve) {
 
 	if (evt.type == SDL_MOUSEMOTION) {
 		//convert mouse from window pixels (top-left origin, +y is down) to clip space ([-1,1]x[-1,1], +y is up):
@@ -125,13 +126,18 @@ bool PongMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			(evt.motion.x + 0.5f) / window_size.x * 2.0f - 1.0f,
 			(evt.motion.y + 0.5f) / window_size.y *-2.0f + 1.0f
 		);
-		left_paddle.y = (clip_to_court * glm::vec3(clip_mouse, 1.0f)).y;
+		player.y = (clip_to_court * glm::vec3(clip_mouse, 1.0f)).y;
+		player.x = (clip_to_court * glm::vec3(clip_mouse, 1.0f)).x;
+	} else if (evt.type == SDL_KEYDOWN && evt.key.keysym.sym == SDLK_SPACE) {
+	  attempt_catch = true;
+	} else if (serve && evt.type == SDL_MOUSEBUTTONDOWN) {
+	  attempt_serve = true;
 	}
 
 	return false;
 }
 
-void PongMode::update(float elapsed) {
+void PongMode::update(float elapsed, bool attempt_catch, bool &serve, bool attempt_serve) {
 
 	static std::mt19937 mt; //mersenne twister pseudo-random number generator
 
@@ -144,10 +150,18 @@ void PongMode::update(float elapsed) {
 			ai_offset_update = (mt() / float(mt.max())) * 0.5f + 0.5f;
 			ai_offset = (mt() / float(mt.max())) * 2.5f - 1.25f;
 		}
-		if (right_paddle.y < ball.y + ai_offset) {
-			right_paddle.y = std::min(ball.y + ai_offset, right_paddle.y + 2.0f * elapsed);
+		if (ball_velocity.x > 0.0f) {
+      if (right_paddle.y < ball.y + ai_offset) {
+        right_paddle.y = std::min(ball.y + ai_offset, right_paddle.y + 2.0f * elapsed);
+      } else {
+        right_paddle.y = std::max(ball.y + ai_offset, right_paddle.y - 2.0f * elapsed);
+      }
 		} else {
-			right_paddle.y = std::max(ball.y + ai_offset, right_paddle.y - 2.0f * elapsed);
+      if (left_paddle.y < ball.y + ai_offset) {
+        left_paddle.y = std::min(ball.y + ai_offset, left_paddle.y + 2.0f * elapsed);
+      } else {
+        left_paddle.y = std::max(ball.y + ai_offset, left_paddle.y - 2.0f * elapsed);
+      }
 		}
 	}
 
@@ -161,12 +175,23 @@ void PongMode::update(float elapsed) {
 	//----- ball update -----
 
 	//speed of ball doubles every four points:
-	float speed_multiplier = 4.0f * std::pow(2.0f, (left_score + right_score) / 4.0f);
+	float speed_multiplier = 4.0f * std::pow(2.0f, (player_score + paddle_score) / 4.0f);
 
 	//velocity cap, though (otherwise ball can pass through paddles):
 	speed_multiplier = std::min(speed_multiplier, 10.0f);
 
-	ball += elapsed * speed_multiplier * ball_velocity;
+  if (serve) {
+    if (attempt_serve) {
+      ball_velocity = player / glm::length(player);
+      ball += elapsed * speed_multiplier * ball_velocity;
+      serve = false;
+      ball_trail.clear();
+    }
+    return;
+  }
+
+  ball += elapsed * speed_multiplier * ball_velocity;
+
 
 	//---- collision handling ----
 
@@ -205,6 +230,22 @@ void PongMode::update(float elapsed) {
 	paddle_vs_ball(left_paddle);
 	paddle_vs_ball(right_paddle);
 
+  //player_vs_ball
+  //compute area of overlap:
+  glm::vec2 min = glm::max(player - player_radius, ball - ball_radius);
+  glm::vec2 max = glm::min(player + player_radius, ball + ball_radius);
+  //if collision, check if attempted to catch:
+  if (min.x <= max.x && min.y <= max.y) {
+    if(attempt_catch) {
+      player_score += 1;
+    } else {
+      paddle_score += 1;
+    }
+    ball = glm::vec2(0, 0);
+    ball_velocity = glm::vec2(0, 0);
+    serve = true;
+  }
+
 	//court walls:
 	if (ball.y > court_radius.y - ball_radius.y) {
 		ball.y = court_radius.y - ball_radius.y;
@@ -223,14 +264,24 @@ void PongMode::update(float elapsed) {
 		ball.x = court_radius.x - ball_radius.x;
 		if (ball_velocity.x > 0.0f) {
 			ball_velocity.x = -ball_velocity.x;
-			left_score += 1;
+      if(attempt_catch) {
+        player_score += 1;
+        ball = glm::vec2(0, 0);
+        ball_velocity = glm::vec2(0, 0);
+        serve = true;
+      }
 		}
 	}
 	if (ball.x < -court_radius.x + ball_radius.x) {
 		ball.x = -court_radius.x + ball_radius.x;
 		if (ball_velocity.x < 0.0f) {
-			ball_velocity.x = -ball_velocity.x;
-			right_score += 1;
+      ball_velocity.x = -ball_velocity.x;
+      if(attempt_catch) {
+        player_score += 1;
+        ball = glm::vec2(0, 0);
+        ball_velocity = glm::vec2(0, 0);
+        serve = true;
+      }
 		}
 	}
 
@@ -334,6 +385,10 @@ void PongMode::draw(glm::uvec2 const &drawable_size) {
 	//paddles:
 	draw_rectangle(left_paddle, paddle_radius, fg_color);
 	draw_rectangle(right_paddle, paddle_radius, fg_color);
+
+	//player:
+	draw_rectangle(player, player_radius, fg_color);
+
 	
 
 	//ball:
@@ -341,10 +396,10 @@ void PongMode::draw(glm::uvec2 const &drawable_size) {
 
 	//scores:
 	glm::vec2 score_radius = glm::vec2(0.1f, 0.1f);
-	for (uint32_t i = 0; i < left_score; ++i) {
+	for (uint32_t i = 0; i < player_score; ++i) {
 		draw_rectangle(glm::vec2( -court_radius.x + (2.0f + 3.0f * i) * score_radius.x, court_radius.y + 2.0f * wall_radius + 2.0f * score_radius.y), score_radius, fg_color);
 	}
-	for (uint32_t i = 0; i < right_score; ++i) {
+	for (uint32_t i = 0; i < paddle_score; ++i) {
 		draw_rectangle(glm::vec2( court_radius.x - (2.0f + 3.0f * i) * score_radius.x, court_radius.y + 2.0f * wall_radius + 2.0f * score_radius.y), score_radius, fg_color);
 	}
 

@@ -91,6 +91,12 @@ int main(int argc, char **argv) {
 
 	//------------ main loop ------------
 
+	bool attempt_catch = false; //indicator of whether the player attempted to catch the ball
+	int catch_leniency = 5;
+	int catch_count = 0;
+	bool serve = false;
+	bool attempt_serve = false;
+
 	//this inline function will be called whenever the window is resized,
 	// and will update the window_size and drawable_size variables:
 	glm::uvec2 window_size; //size of window (layout pixels)
@@ -119,7 +125,7 @@ int main(int argc, char **argv) {
 					on_resize();
 				}
 				//handle input:
-				if (Mode::current && Mode::current->handle_event(evt, window_size)) {
+				if (Mode::current && Mode::current->handle_event(evt, window_size, attempt_catch, serve, attempt_serve)) {
 					// mode handled it; great
 				} else if (evt.type == SDL_QUIT) {
 					Mode::set_current(nullptr);
@@ -152,8 +158,16 @@ int main(int argc, char **argv) {
 			//if frames are taking a very long time to process,
 			//lag to avoid spiral of death:
 			elapsed = std::min(0.1f, elapsed);
-
-			Mode::current->update(elapsed);
+			Mode::current->update(elapsed, attempt_catch, serve, attempt_serve);
+      if (attempt_catch) {
+        if (catch_count <= catch_leniency) {
+          catch_count++;
+        } else {
+          attempt_catch = false;
+          catch_count = 0;
+        }
+      }
+			attempt_serve = false;
 			if (!Mode::current) break;
 		}
 
