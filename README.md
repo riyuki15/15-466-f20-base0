@@ -6,7 +6,7 @@ Design: Modified the game of Pong into a game that is similar to dodgeball. The 
 
 Screen Shot:
 
-![Screen Shot](screenshot.png)
+![Screen Shot](screenshot-correct.png)
 
 How To Play:
 
